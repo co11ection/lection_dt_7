@@ -1,0 +1,10 @@
+INFO start service 
+INFO connection established 
+ERROR failed to load config
+INFO retrying 
+ERROR timeout occurred 
+INFO process running 
+ERROR disk full
+INFO shutdown initiated 
+ERROR crash detected 
+INFO restart complete
