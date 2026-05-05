@@ -133,3 +133,5 @@ print(z_score)
 outliers = df[abs(z_score) > 3]
 
 print(outliers)
+
+
