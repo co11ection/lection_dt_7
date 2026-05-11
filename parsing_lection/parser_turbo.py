@@ -144,5 +144,89 @@ def extract_mileage(text: str) -> int | None:
     return int(digits) if digits else None
 
 
+#==================Парсинг torbo-stream ответа ====================
+"""
+<torbo-stream action="update" target="modal">
+<template> 
+контент
+</template>
+"""
+def exctract_tubo_template(html:str) -> str:
+    match = re.search(r'<template>(.*?)</template>', html, flags=re.DOTALL)
+    return match.group(1) if match else html
 
 
+#==================== Парсинг одной страницы =======================
+
+def parce_catalog_page(html: str) -> list[dict]:
+    """
+    Получаем HTML страницу отправив запрос на ссылку https://turbo.kg/?page=1#scroll 
+    """
+    
+    soup = BeautifulSoup(html, 'lxml')
+    cars_by_url = {}  # словарь или наше бд для хранения уникальных машин
+    
+    # Найти все ссылки на отдельные машины
+    # селектор cars a[href*="/cars/"] ловить любой <a> в href содержится подстрока /cars/
+    for link in soup.select('a[href*="/cars/"]'):
+        href = link.get("href", "")
+        
+        if not re.match(r"^/cars/[A-Za-z0-9]+$", href):
+            continue
+        
+        full_url = urljoin(BASE_URL, href)
+        # Если мы находим дубликат действуем по следующему сценарию
+        if full_url in cars_by_url:
+            title_attr = link.get("title", "").strip()
+            if title_attr and not cars_by_url[full_url].get("name"):
+                cars_by_url[full_url]['name'] = title_attr
+            continue
+        
+        #============== Название =====================
+        name = link.get("title", "").strip() or link.get_text(" ", strip=True)
+        #=============== Изображение===================
+        img_url = ''
+        img_tag = link.find("img")
+        if img_tag:
+            img_url = img_tag.get("src", "") or img_tag.get("data-src", "")
+        
+        # Сохраняем в словарь(или бд)
+        cars_by_url[full_url] = {
+            "url" : full_url,
+            "name": name,
+            "image_url": img_url,
+            "price": None,
+            "year_from_catalog": None
+        }
+    
+    # Вытащим цену и год выпуска
+    for link in soup.select('a[href*="/cars/"]'):
+        href = link.get("href", "")
+        if not re.match(r"^/cars/[A-Za-z0-9]+$", href):
+            continue
+        
+        full_url = urljoin(BASE_URL, href)
+        if full_url not in cars_by_url:
+            continue
+        
+        text = link.get_text(" ", strip=True) # Берем весь текст внутри ссылки
+        print(text)
+        if "сом" in text and cars_by_url[full_url]["price"] is None:
+            cars_by_url[full_url]['price'] = extract_price(text)
+        
+        if cars_by_url[full_url]['year_from_catalog'] is None:
+            cars_by_url[full_url]['year_from_catalog'] = extract_year(text)
+            
+        
+        if not cars_by_url[full_url]["name"]:
+            clean = re.sub(r'\d{4}')
+            
+        
+    
+    print(cars_by_url)
+
+
+if __name__ == "__main__":
+    html = fetch_html(BASE_URL)
+    html_extract = exctract_tubo_template(html)
+    parce_catalog_page(html_extract)
