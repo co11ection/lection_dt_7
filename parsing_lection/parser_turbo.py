@@ -219,14 +219,14 @@ def parce_catalog_page(html: str) -> list[dict]:
             
         
         if not cars_by_url[full_url]["name"]:
-            clean = re.sub(r'\d{4}')
+            clean_text_from_year = re.sub(r'\d{4}\s*r\.?', '', text) #Очищенный текст от года
+            clear_text_from_price = re.sub(r'~?\s[\d\s]+\s*сом', "", clean_text_from_year) # Очистили от цены
+            cars_by_url[full_url]["name"] = clear_text_from_price.strip()
             
-        
-    
-    print(cars_by_url)
+    return list(cars_by_url.values())
 
 
 if __name__ == "__main__":
     html = fetch_html(BASE_URL)
     html_extract = exctract_tubo_template(html)
-    parce_catalog_page(html_extract)
+    print(parce_catalog_page(html_extract))
