@@ -224,9 +224,130 @@ def parce_catalog_page(html: str) -> list[dict]:
             cars_by_url[full_url]["name"] = clear_text_from_price.strip()
             
     return list(cars_by_url.values())
+#=============== Детальный парсинг машины ======================
+def parrse_car_page(html: str) -> dict:
+    """
+    Получаем HTML кконкретной машины и будем досмтавать из него точное название, цену, 
+    все характеристики, и ссылки на картинки, время публикации
+    """
+    inner_html = exctract_tubo_template(html)
+    soup = BeautifulSoup(inner_html, "lxml")
+    result = {}
+    
+    #Получить точное название
+    title_tag = soup.select_one("h1.h5")
+    if title_tag:
+        result["full_name"] = title_tag.get_text(strip=True)
+    
+    #Получить точную цену
+    # <div class='h4'> <b>1212312 сом<\b> <\div>
+    price_tag = soup.select_one("div.h4 b")
+    if price_tag:
+        result['price'] = extract_price(price_tag.get_text())
+    
+    # Получение характеристик
+    specs = {}
+    dl = soup.select_one("dl.row")
+    # получили из супа HTML весь контент в теге dl и классе row
+    if dl:
+        name_specs_list = dl.find_all("dt")
+        # получили список названий  всех характеристик под тегом dt
+        value_specs_list = dl.find_all("dd")
+        # получили список значения  всех характеристик под тегом dd
+        for  name_specs, value_specs in zip(name_specs_list, value_specs_list):
+            clear_name = name_specs.get_text(strip=True) # получили не html а сам текст
+            clear_value = value_specs.get_text(strip=True) # получили не html а сам текст
+            if clear_name:
+                specs[clear_name] = clear_value
+    
+    # Разложили характеристики на отдельные колонки(чтобы легче записать в CSV файл)        
+    for k, v in  specs.items():
+        result[f"specs_{k}"] = v
+    
+    # обработали пробег
+    if "Пробег" in specs:
+        result["millage_km"] = extract_mileage(specs["Пробег"])
+    
+    # Вытащили все картинки
+    photo_urls = []
+    for a in soup.select('a.d-block[href]'):
+        href = a['href']
+        if href.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+            photo_urls.append(href)
+    
+    result["photos"] = " | ".join(photo_urls)
+    result['photos_count'] = len(photo_urls)
+    
+    time_tag = soup.select_one("time[datetime]")
+    if time_tag:
+        result["published_at"] = time_tag['datetime']
+        
+    return result
+
+# ================== Оркестратор(главная функция) ========================
+
+def scrape_all_cars(num_pages: int) -> list[dict]:
+    """ 
+    Главная функция которая будет проходиться по страницам и вытаскивать каждый автомобиль 
+    и его харауктеристики
+    """
+    all_cars = []
+    
+    # 1 Обход страниц
+    for page_num in range(1, num_pages+1):
+        url = f"{BASE_URL}/?page={page_num}"
+        
+        html = fetch_html(url)
+        if not html:
+            print(f"Страница {page_num} пропускаем")
+            continue
+        page_items = parce_catalog_page(html)
+        
+        if not page_items:
+            print("Нет обьявлений или не получили доступ")
+            break
+        
+        all_cars.extend(page_items)
+        
+        time.sleep(DELAY_SEC)
+        
+    # 2 Вытащим детально машины
+    for car in all_cars:
+        html = fetch_html(car["url"])
+        if html is None:
+            continue
+        details = parrse_car_page(html)
+        
+        car.update(details)
+        
+        time.sleep(DELAY_SEC)
+    
+    return all_cars
+
+
+def save_to_scv(cars, file_name):
+    df = pd.DataFrame(cars)
+    main_columns = [
+        "url", 'name', "full_name", "price", "year_from_catalog", "millage_km",
+        "image_url", "photos", "photos_count", "published_at"
+    ]
+    specs_columns = sorted([c for c in df.columns if c.startswith('specs_')])
+    
+    other_columns = [
+        c for c in df.columns if c not in main_columns and not c.startswith("specs_")
+    ]
+    
+    final = [c for c in main_columns if c in df.columns] + specs_columns + other_columns
+    df = df[final]
+    
+    df.to_csv(file_name, index=False, encoding="utf-8-sig")
+
 
 
 if __name__ == "__main__":
-    html = fetch_html(BASE_URL)
-    html_extract = exctract_tubo_template(html)
-    print(parce_catalog_page(html_extract))
+    cars = scrape_all_cars(PAGE_TO_PARSE)
+    save_to_scv(cars, OUTPUT_CSV)
+    
+    print("Конец")
+    
+    df = pd.read_csv(OUTPUT_CSV, spec=',', encoding="utf-8-sig", header=0)
