@@ -350,4 +350,4 @@ if __name__ == "__main__":
     
     print("Конец")
     
-    df = pd.read_csv(OUTPUT_CSV, spec=',', encoding="utf-8-sig", header=0)
+    # df = pd.read_csv(OUTPUT_CSV, sep=',', encoding="utf-8-sig", header=0)
